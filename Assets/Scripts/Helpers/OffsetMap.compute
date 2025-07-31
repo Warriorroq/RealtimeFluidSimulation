@@ -1,0 +1,42 @@
+#pragma kernel initializeOffsets
+#pragma kernel calculateOffsets
+
+// Offset buffer generation for a monotonically increasing list of cell keys.
+// Example:
+// In   : {2,2,2,3,6,6,9,9,9,9}
+// Out  : {x,x,0,3,x,x,4,x,x,6}
+//        ↳ Offsets[6] == 4  -> first index where cell '6' begins.
+//
+// IMPORTANT: `offsets` must be pre-filled with a value >= `numInputs`.
+StructuredBuffer<uint> sortedKeys;
+RWStructuredBuffer<uint> offsets;
+uint numInputs;
+
+bool shouldWriteOffset(uint key, uint prevKey)
+{
+    return key != prevKey;
+}
+
+[numthreads(256, 1, 1)]
+void initializeOffsets(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= numInputs) { return; }
+	offsets[id.x] = numInputs;
+}
+
+[numthreads(256, 1, 1)]
+void calculateOffsets(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= numInputs) { return; }
+
+	uint currentIndex = id.x;
+	uint nullKey = numInputs;
+	
+	uint currentKey = sortedKeys[currentIndex];
+	uint previousKey = (currentIndex == 0) ? nullKey : sortedKeys[currentIndex - 1];
+	
+	if (shouldWriteOffset(currentKey, previousKey))
+	{
+		offsets[currentKey] = currentIndex;
+	}
+}

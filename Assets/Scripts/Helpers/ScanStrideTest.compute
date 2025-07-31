@@ -1,0 +1,104 @@
+#pragma kernel localPrefixSum
+#pragma kernel addGroupOffsets
+
+// Exclusive prefix-sum (Blelloch scan) on the GPU.
+// Each thread processes two elements; one work-group handles ITEMS_PER_GROUP values.
+// Reference: GPU Gems 3 – Chapter 39, adapted for modern HLSL.
+
+static const uint GROUP_SIZE        = 256;
+static const uint ITEMS_PER_GROUP   = GROUP_SIZE * 2;
+
+RWStructuredBuffer<uint> data;            // Source & destination buffer
+RWStructuredBuffer<uint> workGroupTotals; // Per-group totals used for later accumulation
+uint totalCount;                          // Actual number of valid elements in the buffer
+
+groupshared uint sharedMem[ITEMS_PER_GROUP];
+
+void StoreToShared(uint globalIdxA, uint globalIdxB, uint localIdxA, uint localIdxB, bool hasA, bool hasB)
+{
+    sharedMem[localIdxA] = hasA ? data[globalIdxA] : 0;
+    sharedMem[localIdxB] = hasB ? data[globalIdxB] : 0;
+}
+
+void UpSweep(uint localId, inout uint stride)
+{
+    for (uint activeThreads = GROUP_SIZE; activeThreads > 0; activeThreads >>= 1)
+    {
+        GroupMemoryBarrierWithGroupSync();
+
+        if (localId < activeThreads)
+        {
+            uint idxA = stride * ((localId << 1) + 1) - 1;
+            uint idxB = idxA + stride;
+            sharedMem[idxB] += sharedMem[idxA];
+        }
+        stride <<= 1;
+    }
+}
+
+void DownSweep(uint localId, inout uint stride)
+{
+    for (uint activeThreads = 1; activeThreads <= GROUP_SIZE; activeThreads <<= 1)
+    {
+        GroupMemoryBarrierWithGroupSync();
+        stride >>= 1;
+
+        if (localId < activeThreads)
+        {
+            uint idxA = stride * ((localId << 1) + 1) - 1;
+            uint idxB = idxA + stride;
+            uint tmp      = sharedMem[idxA];
+            sharedMem[idxA] = sharedMem[idxB];
+            sharedMem[idxB] += tmp;
+        }
+    }
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void localPrefixSum(uint dispatchThread : SV_DispatchThreadID,
+                    uint localThread   : SV_GroupThreadID,
+                    uint groupId       : SV_GroupID)
+{
+    uint localIdxA  = (localThread << 1);
+    uint localIdxB  = localIdxA + 1;
+    uint globalIdxA = (dispatchThread << 1);
+    uint globalIdxB = globalIdxA + 1;
+
+    bool hasA = globalIdxA < totalCount;
+    bool hasB = globalIdxB < totalCount;
+
+    // Stage 0 – write input values into shared memory
+    StoreToShared(globalIdxA, globalIdxB, localIdxA, localIdxB, hasA, hasB);
+
+    // Stage 1 – reduction (up-sweep)
+    uint stride = 1;
+    UpSweep(localThread, stride);
+
+    // Thread 0 now owns the total for this work-group.
+    if (localThread == 0)
+    {
+        workGroupTotals[groupId]          = sharedMem[ITEMS_PER_GROUP - 1];
+        sharedMem[ITEMS_PER_GROUP - 1] = 0; // Convert to exclusive scan
+    }
+
+    // Stage 2 – propagate prefixes (down-sweep)
+    DownSweep(localThread, stride);
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if (hasA) data[globalIdxA] = sharedMem[localIdxA];
+    if (hasB) data[globalIdxB] = sharedMem[localIdxB];
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void addGroupOffsets(uint dispatchThread : SV_DispatchThreadID,
+                     uint groupId        : SV_GroupID)
+{
+    uint globalIdxA = (dispatchThread << 1);
+    uint globalIdxB = globalIdxA + 1;
+
+    uint offset = workGroupTotals[groupId];
+
+    if (globalIdxA < totalCount) data[globalIdxA] += offset;
+    if (globalIdxB < totalCount) data[globalIdxB] += offset;
+}

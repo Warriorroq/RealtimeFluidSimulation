@@ -1,0 +1,16 @@
+// === Indirect args prep ===
+
+#pragma kernel prepArgs
+
+RWStructuredBuffer<uint> argsBuffer;
+
+[numthreads(1,1,1)]
+void prepArgs(uint3 id : SV_DispatchThreadID)
+{
+    // tri -> idx
+    argsBuffer[0] *= 3;
+    argsBuffer[1] = 1; // inst
+    argsBuffer[2] = 0;
+    argsBuffer[3] = 0;
+    argsBuffer[4] = 0;
+}

@@ -1,0 +1,70 @@
+#pragma kernel initBuffers
+#pragma kernel tallyKeys
+#pragma kernel scatterSortedData
+#pragma kernel copyToSource
+
+RWStructuredBuffer<uint> itemBuffer;
+RWStructuredBuffer<uint> keyBuffer;
+RWStructuredBuffer<uint> sortedItemBuffer;
+RWStructuredBuffer<uint> sortedKeyBuffer;
+
+RWStructuredBuffer<uint> prefixSum;
+uint elementCount;
+
+static const int GROUP_SIZE = 256;
+
+// Initialise count and item mapping for a single element
+void InitializeEntry(uint index)
+{
+    prefixSum[index] = 0;
+    itemBuffer[index] = index;
+}
+
+// Returns the key for an input element
+uint FetchKey(uint index)
+{
+    return keyBuffer[index];
+}
+
+// Writes one element into the sorted buffers
+void Scatter(uint dst, uint src, uint key)
+{
+    sortedItemBuffer[dst] = itemBuffer[src];
+    sortedKeyBuffer[dst] = key;
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void initBuffers(uint3 gid : SV_DispatchThreadID)
+{
+    if (gid.x >= elementCount) return;
+    InitializeEntry(gid.x);
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void tallyKeys(uint3 gid : SV_DispatchThreadID)
+{
+    if (gid.x >= elementCount) return;
+    uint k = FetchKey(gid.x);
+    InterlockedAdd(prefixSum[k], 1);
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void scatterSortedData(uint3 gid : SV_DispatchThreadID)
+{
+    if (gid.x >= elementCount) return;
+
+    uint k = FetchKey(gid.x);
+    uint dstIndex;
+    InterlockedAdd(prefixSum[k], 1, dstIndex);
+
+    Scatter(dstIndex, gid.x, k);
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void copyToSource(uint3 gid : SV_DispatchThreadID)
+{
+    if (gid.x >= elementCount) return;
+
+    itemBuffer[gid.x] = sortedItemBuffer[gid.x];
+    keyBuffer[gid.x] = sortedKeyBuffer[gid.x];
+}

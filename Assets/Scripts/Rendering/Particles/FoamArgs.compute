@@ -1,0 +1,11 @@
+#pragma kernel copyCountToArgs
+
+StructuredBuffer<uint> countBuffer;
+RWStructuredBuffer<uint> argsBuffer;
+
+[numthreads(1,1,1)]
+void copyCountToArgs(uint3 id : SV_DispatchThreadID)
+{
+    // Copy number of active particles into render args buffer
+    argsBuffer[1] = countBuffer[0];
+}
