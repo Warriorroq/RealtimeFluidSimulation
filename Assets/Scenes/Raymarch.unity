@@ -307,7 +307,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f99a384512b94654fbeb7c06c43f81ba, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  particleSpawnDensity: 600
+  particleSpawnDensity: 547
   initialVel:
     x: 0
     y: 0
@@ -322,7 +322,7 @@ MonoBehaviour:
   boundsMin: {x: 0, y: 0, z: 0}
   boundsMax: {x: 0, y: 0, z: 0}
   sizeMinMax: {x: 0, y: 0}
-  debug_num_particles: 238328
+  debug_num_particles: 216000
   debug_spawn_volume: 410.1724
 --- !u!114 &271053324
 MonoBehaviour:
