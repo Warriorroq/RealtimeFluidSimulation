@@ -33,7 +33,6 @@ Assets/
     Rendering/           # Renderers & shaders
     Simulation/          # 2D & 3D solvers, math libraries
   Scenes/                # Demo scenes
-  Diagrams/              # Documentation diagrams
 ```
 
 ## Building for Other Platforms
